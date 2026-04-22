@@ -1,0 +1,39 @@
+# OPEN WRANGLER MANAGER - Idea Principal y Hoja de Ruta
+
+## 💡 Idea Principal
+Una aplicación de escritorio construida con Tauri y React que sirve como panel de control centralizado para desarrolladores de Cloudflare Workers. La app permite gestionar múltiples proyectos (Workers) distribuidos en una estructura de carpetas local, sin necesidad de navegar manualmente por la terminal para cada despliegue o revisión de logs.
+
+## 🚀 Funcionalidades Clave (Implementadas)
+1. **Escaneo Recursivo:** Análisis profundo de directorios para encontrar archivos `.toml`.
+2. **Extracción Automática:** Identificación del nombre del worker y sus entornos (`env`) directamente desde el archivo de configuración.
+3. **Dashboard Visual:** Interfaz premium con tarjetas interactivas para cada worker encontrado.
+4. **Terminal Integrada:** Consola xterm.js que permite ejecutar comandos de Wrangler y ver la salida en vivo.
+5. **Acciones Rápidas:** Botones para `deploy` y `tail` (logs) por cada worker.
+
+## 🗺️ Hoja de Ruta (Pasos a Seguir)
+
+### Fase 1: Estabilidad (Actual)
+- [x] Inicialización del stack Tauri + React + Rust.
+- [x] Lógica de escaneo recursivo en Rust.
+- [x] Integración de Terminal PTY-like (vía xterm.js).
+- [x] Integrar TailwindCSS v3 y rediseño estético.
+- [ ] Validar compatibilidad total de comandos Wrangler en Windows (npx wrangler).
+
+### Fase 2: Control y Configuración
+- [x] **Filtros de Búsqueda:** Poder filtrar workers por nombre o entorno en el dashboard.
+- [x] **Editor Rápido:** Abrir el `.toml` seleccionado en el editor por defecto del sistema desde la app.
+- [x] **Persistencia:** Guardar la última ruta escaneada para no tener que seleccionarla en cada inicio.
+- [x] **Múltiples Shells:** Opción de alternar entre PowerShell, CMD o Git Bash en la terminal.
+
+### Fase 3: Funciones Avanzadas de Wrangler
+- [x] **Wrangler Login:** Comprobar estado de sesión desde la app.
+- [ ] **KV / D1 Management:** Visualizar namespaces de KV o bases de datos D1 vinculadas al worker.
+- [ ] **Secret Management:** Interfaz para añadir/editar secretos (wrangler secret put).
+- [ ] **Dark/Light Mode:** Toggle de temas premium.
+
+### Fase 4: Pulido y Distribución
+- [ ] Optimización de rendimiento para escaneos en directorios masivos (ignorar node_modules).
+- [ ] Empaquetado de la aplicación (MSI / EXE).
+
+---
+*Ultima actualización: 21 de Abril de 2026*

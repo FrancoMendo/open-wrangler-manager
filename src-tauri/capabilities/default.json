@@ -1,0 +1,37 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Capability for the main window",
+  "windows": [
+    "main"
+  ],
+  "permissions": [
+    "core:default",
+    "opener:default",
+    "dialog:default",
+    "shell:default",
+    "shell:allow-kill",
+    {
+      "identifier": "shell:allow-spawn",
+      "allow": [
+        { "name": "npx", "cmd": "npx", "args": true },
+        { "name": "npx.cmd", "cmd": "npx.cmd", "args": true },
+        { "name": "npm", "cmd": "npm", "args": true },
+        { "name": "npm.cmd", "cmd": "npm.cmd", "args": true },
+        { "name": "wrangler", "cmd": "wrangler", "args": true },
+        { "name": "cmd.exe", "cmd": "cmd.exe", "args": true },
+        { "name": "powershell.exe", "cmd": "powershell.exe", "args": true }
+      ]
+    },
+    {
+      "identifier": "shell:allow-execute",
+      "allow": [
+        { "name": "npx", "cmd": "npx", "args": true },
+        { "name": "npx.cmd", "cmd": "npx.cmd", "args": true },
+        { "name": "npm", "cmd": "npm", "args": true },
+        { "name": "npm.cmd", "cmd": "npm.cmd", "args": true },
+        { "name": "wrangler", "cmd": "wrangler", "args": true }
+      ]
+    }
+  ]
+}
