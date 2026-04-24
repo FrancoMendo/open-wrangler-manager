@@ -1,5 +1,5 @@
 [package]
-name = "tauri-app"
+name = "workers-manager"
 version = "0.1.0"
 description = "Open Worker Manager"
 authors = ["Franco"]

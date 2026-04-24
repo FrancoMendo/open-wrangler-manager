@@ -3750,23 +3750,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "tauri-app"
-version = "0.1.0"
-dependencies = [
- "json5",
- "json_comments",
- "serde",
- "serde_json",
- "tauri",
- "tauri-build",
- "tauri-plugin-dialog",
- "tauri-plugin-opener",
- "tauri-plugin-shell",
- "toml 1.1.2+spec-1.1.0",
- "walkdir",
-]
-
-[[package]]
 name = "tauri-build"
 version = "2.5.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5373,6 +5356,23 @@ dependencies = [
  "serde_json",
  "unicode-xid",
  "wasmparser",
+]
+
+[[package]]
+name = "workers-manager"
+version = "0.1.0"
+dependencies = [
+ "json5",
+ "json_comments",
+ "serde",
+ "serde_json",
+ "tauri",
+ "tauri-build",
+ "tauri-plugin-dialog",
+ "tauri-plugin-opener",
+ "tauri-plugin-shell",
+ "toml 1.1.2+spec-1.1.0",
+ "walkdir",
 ]
 
 [[package]]
