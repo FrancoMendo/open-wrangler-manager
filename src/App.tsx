@@ -2,13 +2,14 @@ import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
 import { Command } from '@tauri-apps/plugin-shell';
-import { FolderOpen, RefreshCw, Terminal as TerminalIcon, User, UserX, Search, Rocket, X, GitBranch, ChevronDown, Settings } from 'lucide-react';
+import { FolderOpen, RefreshCw, Terminal as TerminalIcon, User, UserX, Search, Rocket, X, GitBranch, ChevronDown, Settings, AlertCircle } from 'lucide-react';
 import logo from './assets/logo.png';
 import { Worker } from './components/WorkerCard';
 import FolderGroup from './components/FolderGroup';
 import Terminal, { TerminalHandle } from './components/Terminal';
 import MultiDeployModal, { WorkerDeployConfig } from './components/MultiDeployModal';
 import DeploySettingsModal, { DEFAULT_DEPLOY_TEMPLATE } from './components/DeploySettingsModal';
+import ErrorLogPanel, { AppError } from './components/ErrorLogPanel';
 
 
 function App() {
@@ -37,6 +38,9 @@ function App() {
   const [deployDir, setDeployDir] = useState(localStorage.getItem('deploy_dir') ?? '');
   const [showDeploySettings, setShowDeploySettings] = useState(false);
   const [deployProgress, setDeployProgress] = useState<{ current: number; total: number } | null>(null);
+  const [appErrors, setAppErrors] = useState<AppError[]>([]);
+  const [showErrorLog, setShowErrorLog] = useState(false);
+  const errorIdRef = useRef(0);
   const isDragging = useRef(false);
   const dragStartY = useRef(0);
   const dragStartHeight = useRef(0);
@@ -85,30 +89,41 @@ function App() {
     }
   };
 
-  const [debugStatus, setDebugStatus] = useState<string>('checking...');
+  const pushError = useCallback((source: string, level: AppError['level'], message: string, detail?: string) => {
+    setAppErrors(prev => [...prev, { id: ++errorIdRef.current, timestamp: new Date(), source, level, message, detail }]);
+  }, []);
 
   const checkLoginStatus = async () => {
     try {
-      const program = 'npx.cmd';
-      setDebugStatus(`calling ${program} wrangler whoami...`);
-      const command = Command.create(program, ['wrangler', 'whoami']);
+      const command = Command.create('npx.cmd', ['wrangler', 'whoami']);
       const output = await command.execute();
 
       const stripAnsi = (str: string) => str.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, '');
       const combined = stripAnsi(`${output.stdout}\n${output.stderr}`);
 
-      setDebugStatus(`code=${output.code} | err="${output.stderr.slice(0, 80)}"`);
-
       const emailMatch = combined.match(/([a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,})/);
       if (emailMatch?.[1]) {
         setUserEmail(emailMatch[1].trim());
-        setDebugStatus('');
       } else {
         setUserEmail(null);
+        const isNotLogged = combined.toLowerCase().includes('not authenticated') || combined.toLowerCase().includes('you must run');
+        const isNetworkErr = combined.toLowerCase().includes('enotfound') || combined.toLowerCase().includes('network');
+        if (isNotLogged) {
+          pushError('wrangler:auth', 'warn', 'No hay sesión activa en Wrangler. Ejecutá "wrangler login" para autenticarte.');
+        } else if (isNetworkErr) {
+          pushError('wrangler:auth', 'error', 'Error de red al verificar sesión de Wrangler.', combined.trim().slice(0, 200));
+        } else if (output.code !== 0) {
+          pushError('wrangler:auth', 'error', `wrangler whoami falló (exit code ${output.code}).`, combined.trim().slice(0, 200));
+        }
       }
     } catch (err) {
-      setDebugStatus(`ERROR: ${String(err)}`);
       setUserEmail(null);
+      const msg = String(err);
+      if (msg.includes('program not found') || msg.includes('No such file')) {
+        pushError('wrangler:auth', 'error', 'npx/wrangler no encontrado. Verificá que Node.js y wrangler estén instalados.', msg);
+      } else {
+        pushError('wrangler:auth', 'error', 'Error inesperado al ejecutar wrangler whoami.', msg);
+      }
     }
   };
 
@@ -155,6 +170,7 @@ function App() {
     } catch (err) {
       console.error(err);
       terminalRef.current?.write(`\r\n\x1b[31mError scanning: ${err}\x1b[0m\r\n`);
+      pushError('scan_workers', 'error', `Error al escanear directorio: ${path}`, String(err));
     } finally {
       setLoading(false);
     }
@@ -312,11 +328,11 @@ function App() {
           <img
             src={logo}
             alt="Worker Manager logo"
-            className="w-20 h-20 rounded-3xl object-cover shrink-0 shadow-lg shadow-sky-500/10"
+            className="w-24 h-24 rounded-full object-cover shrink-0 shadow-lg shadow-sky-500/10"
           />
           <div className="flex flex-col">
             <h1 className="text-2xl font-black bg-gradient-to-r from-sky-400 to-indigo-400 bg-clip-text text-transparent leading-none">
-              WORKER MANAGER
+              Open Worker Manager
             </h1>
             {/* Row 1: badges */}
             <div className="flex items-center gap-2 mt-1">
@@ -335,11 +351,6 @@ function App() {
               {wranglerVersion && (
                 <span className="px-2 py-0.5 rounded-full bg-sky-500/10 border border-sky-500/20 text-[10px] font-bold text-sky-400">
                   wrangler v{wranglerVersion}
-                </span>
-              )}
-              {debugStatus && (
-                <span className="text-[10px] text-yellow-400 font-mono max-w-[400px] truncate" title={debugStatus}>
-                  🐛 {debugStatus}
                 </span>
               )}
             </div>
@@ -400,6 +411,19 @@ function App() {
 
         {/* Actions */}
         <div className="flex items-center gap-3">
+          {/* Error log button */}
+          <button
+            onClick={() => setShowErrorLog(v => !v)}
+            className={`relative p-2 rounded-lg transition-colors ${showErrorLog ? 'bg-red-500/20 text-red-400' : 'bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-red-400'}`}
+            title="Error log"
+          >
+            <AlertCircle size={18} />
+            {appErrors.length > 0 && (
+              <span className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 rounded-full bg-red-500 text-[9px] font-bold text-white flex items-center justify-center">
+                {appErrors.length > 99 ? '99+' : appErrors.length}
+              </span>
+            )}
+          </button>
           <button
             onClick={() => setShowDeploySettings(true)}
             className="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-sky-400 transition-colors"
@@ -546,6 +570,15 @@ function App() {
           selectedEnv={multiDeployEnv}
           onConfirm={handleMultiDeploy}
           onCancel={() => setShowMultiDeployModal(false)}
+        />
+      )}
+
+      {/* Error log panel */}
+      {showErrorLog && (
+        <ErrorLogPanel
+          errors={appErrors}
+          onClear={() => setAppErrors([])}
+          onClose={() => setShowErrorLog(false)}
         />
       )}
 
