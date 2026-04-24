@@ -41,6 +41,7 @@ function App() {
   const [appErrors, setAppErrors] = useState<AppError[]>([]);
   const [showErrorLog, setShowErrorLog] = useState(false);
   const errorIdRef = useRef(0);
+  const authCheckActiveRef = useRef(false);
   const isDragging = useRef(false);
   const dragStartY = useRef(0);
   const dragStartHeight = useRef(0);
@@ -90,10 +91,20 @@ function App() {
   };
 
   const pushError = useCallback((source: string, level: AppError['level'], message: string, detail?: string) => {
-    setAppErrors(prev => [...prev, { id: ++errorIdRef.current, timestamp: new Date(), source, level, message, detail }]);
+    setAppErrors(prev => {
+      const idx = prev.findIndex(e => e.source === source && e.message === message);
+      if (idx !== -1) {
+        const next = [...prev];
+        next[idx] = { ...next[idx], timestamp: new Date(), detail };
+        return next;
+      }
+      return [...prev, { id: ++errorIdRef.current, timestamp: new Date(), source, level, message, detail }];
+    });
   }, []);
 
   const checkLoginStatus = async () => {
+    if (authCheckActiveRef.current) return;
+    authCheckActiveRef.current = true;
     try {
       const command = Command.create('npx.cmd', ['wrangler', 'whoami']);
       const output = await command.execute();
@@ -106,14 +117,13 @@ function App() {
         setUserEmail(emailMatch[1].trim());
       } else {
         setUserEmail(null);
-        const isNotLogged = combined.toLowerCase().includes('not authenticated') || combined.toLowerCase().includes('you must run');
-        const isNetworkErr = combined.toLowerCase().includes('enotfound') || combined.toLowerCase().includes('network');
-        if (isNotLogged) {
-          pushError('wrangler:auth', 'warn', 'No hay sesión activa en Wrangler. Ejecutá "wrangler login" para autenticarte.');
-        } else if (isNetworkErr) {
+        const low = combined.toLowerCase();
+        const isNotLogged = low.includes('not authenticated') || low.includes('you must run') || low.includes('not logged in');
+        const isNetworkErr = low.includes('enotfound') || low.includes('fetch failed') || low.includes('network');
+        if (isNetworkErr) {
           pushError('wrangler:auth', 'error', 'Error de red al verificar sesión de Wrangler.', combined.trim().slice(0, 200));
-        } else if (output.code !== 0) {
-          pushError('wrangler:auth', 'error', `wrangler whoami falló (exit code ${output.code}).`, combined.trim().slice(0, 200));
+        } else if (isNotLogged || output.code !== 0) {
+          pushError('wrangler:auth', 'warn', 'No hay sesión activa en Wrangler. Ejecutá "wrangler login" para autenticarte.', combined.trim().slice(0, 200));
         }
       }
     } catch (err) {
@@ -124,6 +134,8 @@ function App() {
       } else {
         pushError('wrangler:auth', 'error', 'Error inesperado al ejecutar wrangler whoami.', msg);
       }
+    } finally {
+      authCheckActiveRef.current = false;
     }
   };
 
