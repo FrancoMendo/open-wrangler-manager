@@ -186,8 +186,15 @@ const Terminal = forwardRef<TerminalHandle, TerminalProps>(({ selectedShell, onS
 
       kill: async () => {
         if (activeChildRef.current) {
+          const pid = activeChildRef.current.pid;
           try {
-            await activeChildRef.current.kill();
+            // taskkill /F /T kills the entire process tree (npx.cmd → node → wrangler)
+            await new Promise<void>((resolve) => {
+              const tc = Command.create('taskkill', ['/F', '/T', '/PID', String(pid)]);
+              tc.on('close', () => resolve());
+              tc.on('error', () => resolve());
+              tc.spawn().catch(() => resolve());
+            });
             xtermRef.current?.writeln('\r\n\x1b[33mProcess killed by user.\x1b[0m');
           } catch (err) {
             xtermRef.current?.writeln(`\r\n\x1b[31mFailed to kill process: ${err}\x1b[0m`);

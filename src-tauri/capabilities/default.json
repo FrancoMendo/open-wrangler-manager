@@ -20,7 +20,8 @@
         { "name": "npm.cmd", "cmd": "npm.cmd", "args": true },
         { "name": "wrangler", "cmd": "wrangler", "args": true },
         { "name": "cmd.exe", "cmd": "cmd.exe", "args": true },
-        { "name": "powershell.exe", "cmd": "powershell.exe", "args": true }
+        { "name": "powershell.exe", "cmd": "powershell.exe", "args": true },
+        { "name": "taskkill", "cmd": "taskkill", "args": true }
       ]
     },
     {
