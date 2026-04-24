@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What This Is
 
-**Open Wrangler Manager** — a Tauri 2.x desktop app for managing Cloudflare Workers projects. Users select a local directory; the Rust backend recursively scans it for `wrangler.toml`/`wrangler.jsonc` files and surfaces them as cards. From there users can deploy, tail logs, and run Wrangler commands through an embedded xterm.js terminal.
+**Open Worker Manager** — a Tauri 2.x desktop app for managing Cloudflare Workers projects. Users select a local directory; the Rust backend recursively scans it for `wrangler.toml`/`wrangler.jsonc` files and surfaces them as cards. From there users can deploy, tail logs, and run Wrangler commands through an embedded xterm.js terminal.
 
 ## Commands
 

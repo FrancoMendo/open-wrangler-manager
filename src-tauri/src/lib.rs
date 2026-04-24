@@ -19,9 +19,9 @@ pub struct WorkerInfo {
 fn is_wrangler_config(file_name: &str) -> bool {
     let lower = file_name.to_lowercase();
     // Must start with "wrangler" and end with .toml or .jsonc
-    /*   if !lower.starts_with("wrangler") {
+    if !lower.starts_with("wrangler") {
         return false;
-    } */
+    }
     if lower.ends_with(".toml") || lower.ends_with(".jsonc") {
         // After "wrangler", the next char must be '.', '-', or end of stem
         let after_wrangler = &lower["wrangler".len()..];
@@ -98,16 +98,7 @@ fn scan_workers(base_path: String) -> Result<Vec<WorkerInfo>, String> {
             None => continue,
         };
 
-        if file_name == "Cargo.toml"
-            || file_name == "package.json"
-            || file_name == "package-lock.json"
-            || file_name == "tsconfig.json"
-        {
-            continue;
-        }
-
-        let extension = path.extension().and_then(|e| e.to_str()).unwrap_or("");
-        if extension != "toml" && extension != "jsonc" {
+        if !is_wrangler_config(file_name) {
             continue;
         }
 
@@ -120,6 +111,8 @@ fn scan_workers(base_path: String) -> Result<Vec<WorkerInfo>, String> {
         };
 
         let clean_content = content.trim();
+
+        let extension = file_name.rsplit('.').next().unwrap_or("").to_lowercase();
 
         let (name, environments) = if extension == "toml" {
             let value: toml::Value = match toml::from_str(clean_content) {

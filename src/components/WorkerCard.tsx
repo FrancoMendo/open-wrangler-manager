@@ -13,9 +13,11 @@ interface WorkerCardProps {
   onDeploy: (worker: Worker, env?: string) => void;
   onLogs: (worker: Worker, env?: string, format?: string) => void;
   onOpen: (worker: Worker) => void;
+  isSelected?: boolean;
+  onSelectToggle?: (worker: Worker) => void;
 }
 
-const WorkerCard = ({ worker, onDeploy, onLogs, onOpen: _onOpen }: WorkerCardProps) => {
+const WorkerCard = ({ worker, onDeploy, onLogs, onOpen: _onOpen, isSelected = false, onSelectToggle }: WorkerCardProps) => {
   const [selectedEnv, setSelectedEnv] = useState<string | null>(null);
   const [envOpen, setEnvOpen] = useState(false);
   const [logFormat, setLogFormat] = useState<'pretty' | 'json'>('pretty');
@@ -24,9 +26,28 @@ const WorkerCard = ({ worker, onDeploy, onLogs, onOpen: _onOpen }: WorkerCardPro
   const displayEnv = selectedEnv ?? 'default';
 
   return (
-    <div className="group bg-slate-900/50 border border-slate-800 hover:border-sky-500/40 rounded-lg transition-all duration-200 hover:shadow-lg hover:shadow-sky-500/5">
+    <div className={`group bg-slate-900/50 border rounded-lg transition-all duration-200 hover:shadow-lg ${isSelected ? 'border-indigo-500/60 shadow-indigo-500/10' : 'border-slate-800 hover:border-sky-500/40 hover:shadow-sky-500/5'}`}>
       {/* Main row */}
       <div className="flex items-center gap-3 px-4 py-3">
+        {/* Checkbox */}
+        {onSelectToggle && (
+          <button
+            onClick={() => onSelectToggle(worker)}
+            className={`shrink-0 w-4 h-4 rounded border-2 flex items-center justify-center transition-all ${
+              isSelected
+                ? 'bg-indigo-500 border-indigo-500'
+                : 'border-slate-600 bg-transparent opacity-0 group-hover:opacity-100 hover:border-indigo-400'
+            }`}
+            title={isSelected ? 'Deseleccionar' : 'Seleccionar para deploy múltiple'}
+          >
+            {isSelected && (
+              <svg width="8" height="8" viewBox="0 0 8 8" fill="none">
+                <path d="M1 4L3 6L7 2" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            )}
+          </button>
+        )}
+
         {/* Icon */}
         <Globe size={14} className="text-sky-400 shrink-0" />
 

@@ -1,0 +1,1 @@
+npm run tauri dev      --> Abre app tauri compilada

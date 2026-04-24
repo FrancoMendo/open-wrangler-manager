@@ -7,6 +7,8 @@ interface FolderGroupProps {
   onDeploy: (worker: Worker, env?: string) => void;
   onLogs: (worker: Worker, env?: string, format?: string) => void;
   onOpen: (worker: Worker) => void;
+  selectedWorkers?: Set<string>;
+  onSelectToggle?: (worker: Worker) => void;
 }
 
 interface FolderNode {
@@ -75,9 +77,11 @@ interface FolderSectionProps {
   onLogs: (worker: Worker, env?: string, format?: string) => void;
   onOpen: (worker: Worker) => void;
   defaultOpen?: boolean;
+  selectedWorkers?: Set<string>;
+  onSelectToggle?: (worker: Worker) => void;
 }
 
-const FolderSection = ({ node, depth, onDeploy, onLogs, onOpen, defaultOpen = true }: FolderSectionProps) => {
+const FolderSection = ({ node, depth, onDeploy, onLogs, onOpen, defaultOpen = true, selectedWorkers, onSelectToggle }: FolderSectionProps) => {
   const [isOpen, setIsOpen] = useState(defaultOpen);
   const totalWorkers = useMemo(() => countWorkers(node), [node]);
 
@@ -100,9 +104,8 @@ const FolderSection = ({ node, depth, onDeploy, onLogs, onOpen, defaultOpen = tr
       {node.name && (
         <button
           onClick={() => setIsOpen(o => !o)}
-          className={`w-full flex items-center gap-2 px-4 py-2.5 text-left transition-all hover:bg-white/[0.02] rounded-t-lg ${
-            !isOpen ? 'rounded-b-lg' : ''
-          }`}
+          className={`w-full flex items-center gap-2 px-4 py-2.5 text-left transition-all hover:bg-white/[0.02] rounded-t-lg ${!isOpen ? 'rounded-b-lg' : ''
+            }`}
         >
           <ChevronRight
             size={14}
@@ -131,6 +134,8 @@ const FolderSection = ({ node, depth, onDeploy, onLogs, onOpen, defaultOpen = tr
               onDeploy={onDeploy}
               onLogs={onLogs}
               onOpen={() => onOpen(worker)}
+              isSelected={selectedWorkers?.has(worker.path)}
+              onSelectToggle={onSelectToggle}
             />
           ))}
 
@@ -143,7 +148,9 @@ const FolderSection = ({ node, depth, onDeploy, onLogs, onOpen, defaultOpen = tr
               onDeploy={onDeploy}
               onLogs={onLogs}
               onOpen={onOpen}
-              defaultOpen={depth < 1} // Auto-open first level, collapse deeper
+              defaultOpen={false}
+              selectedWorkers={selectedWorkers}
+              onSelectToggle={onSelectToggle}
             />
           ))}
         </div>
@@ -152,7 +159,7 @@ const FolderSection = ({ node, depth, onDeploy, onLogs, onOpen, defaultOpen = tr
   );
 };
 
-const FolderGroup = ({ workers, onDeploy, onLogs, onOpen }: FolderGroupProps) => {
+const FolderGroup = ({ workers, onDeploy, onLogs, onOpen, selectedWorkers, onSelectToggle }: FolderGroupProps) => {
   const tree = useMemo(() => buildFolderTree(workers), [workers]);
 
   // If all workers are in the root (no subdirectories), render flat list
@@ -168,6 +175,8 @@ const FolderGroup = ({ workers, onDeploy, onLogs, onOpen }: FolderGroupProps) =>
             onDeploy={onDeploy}
             onLogs={onLogs}
             onOpen={() => onOpen(worker)}
+            isSelected={selectedWorkers?.has(worker.path)}
+            onSelectToggle={onSelectToggle}
           />
         ))}
       </div>
@@ -186,6 +195,8 @@ const FolderGroup = ({ workers, onDeploy, onLogs, onOpen }: FolderGroupProps) =>
               onDeploy={onDeploy}
               onLogs={onLogs}
               onOpen={() => onOpen(worker)}
+              isSelected={selectedWorkers?.has(worker.path)}
+              onSelectToggle={onSelectToggle}
             />
           ))}
         </div>
@@ -202,7 +213,9 @@ const FolderGroup = ({ workers, onDeploy, onLogs, onOpen }: FolderGroupProps) =>
             onDeploy={onDeploy}
             onLogs={onLogs}
             onOpen={onOpen}
-            defaultOpen={true}
+            defaultOpen={false}
+            selectedWorkers={selectedWorkers}
+            onSelectToggle={onSelectToggle}
           />
         ))}
     </div>

@@ -4,10 +4,11 @@ import { FitAddon } from '@xterm/addon-fit';
 import { SearchAddon } from '@xterm/addon-search';
 import '@xterm/xterm/css/xterm.css';
 import { Command } from '@tauri-apps/plugin-shell';
-import { Trash2, Search, ChevronUp, ChevronDown, X } from 'lucide-react';
+import { Trash2, Search, ChevronUp, ChevronDown, X, FolderSearch } from 'lucide-react';
 
 export interface TerminalHandle {
   executeCommand: (commandStr: string, cwd?: string) => Promise<void>;
+  executeSequential: (commands: { command: string; cwd?: string; label?: string }[]) => Promise<void>;
   write: (text: string) => void;
   kill: () => Promise<void>;
 }
@@ -86,81 +87,111 @@ const Terminal = forwardRef<TerminalHandle, TerminalProps>(({ selectedShell, onS
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [searchOpen, toggleSearch]);
 
-  useImperativeHandle(ref, () => ({
-    executeCommand: async (commandStr: string, cwd?: string) => {
-      if (!xtermRef.current) return;
+  const runCommandInternal = useCallback((commandStr: string, cwd?: string): Promise<void> => {
+    const term = xtermRef.current;
+    if (!term) return Promise.resolve();
 
-      const term = xtermRef.current;
-      term.writeln(`\r\n\x1b[36m$ ${commandStr}\x1b[0m`);
+    const isWrangler = commandStr.startsWith('npx wrangler') || commandStr.startsWith('npx.cmd wrangler');
 
-      try {
-        let program: string;
-        let args: string[];
+    let program: string;
+    let args: string[];
 
-        const isWrangler = commandStr.startsWith('npx wrangler') || commandStr.startsWith('npx.cmd wrangler');
+    if (isWrangler) {
+      program = 'npx.cmd';
+      args = commandStr.replace(/^npx(\.cmd)? /, '').split(' ');
+    } else if (selectedShell === 'powershell') {
+      program = 'powershell.exe';
+      args = ['-NoProfile', '-Command', commandStr];
+    } else {
+      program = 'cmd.exe';
+      args = ['/c', commandStr];
+    }
 
-        if (isWrangler) {
-          program = 'npx.cmd';
-          args = commandStr.replace(/^npx(\.cmd)? /, '').split(' ');
-        } else if (selectedShell === 'powershell') {
-          program = 'powershell.exe';
-          args = ['-NoProfile', '-Command', commandStr];
-        } else {
-          program = 'cmd.exe';
-          args = ['/c', commandStr];
-        }
+    const command = Command.create(program, args, { cwd });
 
-        const command = Command.create(program, args, { cwd });
-
-        command.on('close', (data) => {
-          term.writeln(`\r\n\x1b[32mProcess exited with code ${data.code}\x1b[0m`);
-          activeChildRef.current = null;
-          onProcessChange?.(false);
-        });
-
-        command.on('error', (error) => {
-          term.writeln(`\r\n\x1b[31mError: ${error}\x1b[0m`);
-          activeChildRef.current = null;
-          onProcessChange?.(false);
-        });
-
-        command.stdout.on('data', (line: string) => {
-          term.writeln(line);
-        });
-
-        command.stderr.on('data', (line: string) => {
-          if (isWrangler) {
-            term.writeln(line);
-          } else {
-            term.writeln(`\x1b[31m${line}\x1b[0m`);
-          }
-        });
-
-        const child = await command.spawn();
-        activeChildRef.current = child;
-        onProcessChange?.(true);
-      } catch (err) {
-        term.writeln(`\r\n\x1b[31mFailed to execute: ${err}\x1b[0m`);
+    return new Promise<void>((resolve) => {
+      command.on('close', (data) => {
+        term.writeln(`\r\n\x1b[32mProcess exited with code ${data.code}\x1b[0m`);
+        activeChildRef.current = null;
         onProcessChange?.(false);
-      }
-    },
-    write: (text: string) => {
-      xtermRef.current?.write(text);
-    },
-    kill: async () => {
-      if (activeChildRef.current) {
-        try {
-          await activeChildRef.current.kill();
-          xtermRef.current?.writeln('\r\n\x1b[33mProcess killed by user.\x1b[0m');
-        } catch (err) {
-          xtermRef.current?.writeln(`\r\n\x1b[31mFailed to kill process: ${err}\x1b[0m`);
-        } finally {
-          activeChildRef.current = null;
-          onProcessChange?.(false);
+        resolve();
+      });
+
+      command.on('error', (error) => {
+        term.writeln(`\r\n\x1b[31mError: ${error}\x1b[0m`);
+        activeChildRef.current = null;
+        onProcessChange?.(false);
+        resolve();
+      });
+
+      command.stdout.on('data', (line: string) => {
+        term.writeln(line);
+      });
+
+      command.stderr.on('data', (line: string) => {
+        if (isWrangler) {
+          term.writeln(line);
+        } else {
+          term.writeln(`\x1b[31m${line}\x1b[0m`);
         }
-      }
-    },
-  }));
+      });
+
+      command.spawn()
+        .then((child) => {
+          activeChildRef.current = child;
+          onProcessChange?.(true);
+        })
+        .catch((err) => {
+          term.writeln(`\r\n\x1b[31mFailed to execute: ${err}\x1b[0m`);
+          onProcessChange?.(false);
+          resolve();
+        });
+    });
+  }, [selectedShell, onProcessChange]);
+
+  const handlePwd = useCallback(() => {
+    const cmd = selectedShell === 'powershell' ? 'pwd' : 'cd';
+    xtermRef.current?.writeln(`\r\n\x1b[36m$ ${cmd}\x1b[0m`);
+    runCommandInternal(cmd);
+  }, [selectedShell, runCommandInternal]);
+
+  useImperativeHandle(ref, () => ({
+      executeCommand: async (commandStr: string, cwd?: string) => {
+        if (!xtermRef.current) return;
+        xtermRef.current.writeln(`\r\n\x1b[36m$ ${commandStr}\x1b[0m`);
+        await runCommandInternal(commandStr, cwd);
+      },
+
+      executeSequential: async (commands: { command: string; cwd?: string; label?: string }[]) => {
+        for (const { command, cwd, label } of commands) {
+          if (!xtermRef.current) return;
+          if (label) {
+            xtermRef.current.writeln(`\r\n\x1b[35m▶ ${label}\x1b[0m`);
+          }
+          xtermRef.current.writeln(`\r\n\x1b[36m$ ${command}\x1b[0m`);
+          await runCommandInternal(command, cwd);
+        }
+        xtermRef.current?.writeln('\r\n\x1b[32m✓ Multi-deploy finalizado.\x1b[0m');
+      },
+
+      write: (text: string) => {
+        xtermRef.current?.write(text);
+      },
+
+      kill: async () => {
+        if (activeChildRef.current) {
+          try {
+            await activeChildRef.current.kill();
+            xtermRef.current?.writeln('\r\n\x1b[33mProcess killed by user.\x1b[0m');
+          } catch (err) {
+            xtermRef.current?.writeln(`\r\n\x1b[31mFailed to kill process: ${err}\x1b[0m`);
+          } finally {
+            activeChildRef.current = null;
+            onProcessChange?.(false);
+          }
+        }
+      },
+    }), [runCommandInternal, onProcessChange]);
 
   useEffect(() => {
     if (!terminalRef.current) return;
@@ -241,6 +272,16 @@ const Terminal = forwardRef<TerminalHandle, TerminalProps>(({ selectedShell, onS
           >
             <Search size={11} />
             Find
+          </button>
+
+          {/* PWD */}
+          <button
+            onClick={handlePwd}
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded text-[10px] font-bold text-slate-500 hover:text-sky-400 hover:bg-sky-500/10 border border-transparent transition-all"
+            title="Print working directory"
+          >
+            <FolderSearch size={11} />
+            pwd
           </button>
 
           {/* Clear */}

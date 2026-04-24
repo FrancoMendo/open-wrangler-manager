@@ -1,4 +1,4 @@
-# OPEN WRANGLER MANAGER - Idea Principal y Hoja de Ruta
+# OPEN WORKER MANAGER - Idea Principal y Hoja de Ruta
 
 ## 💡 Idea Principal
 Una aplicación de escritorio construida con Tauri y React que sirve como panel de control centralizado para desarrolladores de Cloudflare Workers. La app permite gestionar múltiples proyectos (Workers) distribuidos en una estructura de carpetas local, sin necesidad de navegar manualmente por la terminal para cada despliegue o revisión de logs.
@@ -27,9 +27,6 @@ Una aplicación de escritorio construida con Tauri y React que sirve como panel 
 
 ### Fase 3: Funciones Avanzadas de Wrangler
 - [x] **Wrangler Login:** Comprobar estado de sesión desde la app.
-- [ ] **KV / D1 Management:** Visualizar namespaces de KV o bases de datos D1 vinculadas al worker.
-- [ ] **Secret Management:** Interfaz para añadir/editar secretos (wrangler secret put).
-- [ ] **Dark/Light Mode:** Toggle de temas premium.
 
 ### Fase 4: Pulido y Distribución
 - [ ] Optimización de rendimiento para escaneos en directorios masivos (ignorar node_modules).

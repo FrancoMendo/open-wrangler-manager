@@ -1,11 +1,14 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
 import { Command } from '@tauri-apps/plugin-shell';
-import { FolderOpen, RefreshCw, Terminal as TerminalIcon, User, UserX, Search } from 'lucide-react';
+import { FolderOpen, RefreshCw, Terminal as TerminalIcon, User, UserX, Search, Rocket, X, GitBranch, ChevronDown, Settings } from 'lucide-react';
 import { Worker } from './components/WorkerCard';
 import FolderGroup from './components/FolderGroup';
 import Terminal, { TerminalHandle } from './components/Terminal';
+import MultiDeployModal from './components/MultiDeployModal';
+import DeploySettingsModal, { DEFAULT_DEPLOY_TEMPLATE } from './components/DeploySettingsModal';
+import logo from './assets/logo.png';
 
 function App() {
   const [workers, setWorkers] = useState<Worker[]>([]);
@@ -17,6 +20,21 @@ function App() {
   const [wranglerVersion, setWranglerVersion] = useState<string | null>(null);
   const [processRunning, setProcessRunning] = useState(false);
   const [terminalHeight, setTerminalHeight] = useState(280);
+  const [selectedWorkers, setSelectedWorkers] = useState<Set<string>>(new Set());
+  const [multiDeployEnv, setMultiDeployEnv] = useState('default');
+  const [showMultiDeployModal, setShowMultiDeployModal] = useState(false);
+  const [currentBranch, setCurrentBranch] = useState<string | null>(null);
+  const [branches, setBranches] = useState<string[]>([]);
+  const [branchMenuOpen, setBranchMenuOpen] = useState(false);
+  const [deployTemplate, setDeployTemplate] = useState(() => {
+    const saved = localStorage.getItem('deploy_template');
+    // Migrate: old default included --config flag; reset to new default automatically.
+    const OLD_DEFAULT = 'npx wrangler deploy --minify {env} --config={config}';
+    if (!saved || saved === OLD_DEFAULT) return DEFAULT_DEPLOY_TEMPLATE;
+    return saved;
+  });
+  const [deployDir, setDeployDir] = useState(localStorage.getItem('deploy_dir') ?? '');
+  const [showDeploySettings, setShowDeploySettings] = useState(false);
   const isDragging = useRef(false);
   const dragStartY = useRef(0);
   const dragStartHeight = useRef(0);
@@ -77,7 +95,7 @@ function App() {
       const stripAnsi = (str: string) => str.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, '');
       const combined = stripAnsi(`${output.stdout}\n${output.stderr}`);
 
-      setDebugStatus(`code=${output.code} | out="${output.stdout.slice(0, 40)}" | err="${output.stderr.slice(0, 80)}"`);
+      setDebugStatus(`code=${output.code} | err="${output.stderr.slice(0, 80)}"`);
 
       const emailMatch = combined.match(/([a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,})/);
       if (emailMatch?.[1]) {
@@ -107,7 +125,7 @@ function App() {
 
     const interval = setInterval(() => {
       checkLoginStatus();
-    }, 30000);
+    }, 10000);
 
     return () => clearInterval(interval);
   }, [userEmail]);
@@ -140,16 +158,39 @@ function App() {
     }
   };
 
+  const buildDeployCommand = (worker: Worker, env?: string): string => {
+    const envPart = env ? `--env ${env}` : '';
+    return deployTemplate
+      .replace('{config}', worker.path)
+      .replace('{name}', worker.name)
+      .replace('{env}', envPart)
+      .trim()
+      .replace(/\s{2,}/g, ' ');
+  };
+
+  /** Returns the directory containing the worker's config file. */
+  const getWorkerDir = (worker: Worker): string => {
+    // Works with both '/' and '\\' path separators
+    const sep = worker.path.includes('\\') ? '\\' : '/';
+    return worker.path.substring(0, worker.path.lastIndexOf(sep));
+  };
+
+  const resolveCwd = (worker: Worker): string => {
+    const workerDir = getWorkerDir(worker);
+    if (!deployDir) return workerDir;
+    return deployDir.replace('{dir}', workerDir);
+  };
+
   const handleDeploy = (worker: Worker, env?: string) => {
-    const directory = worker.path.substring(0, worker.path.lastIndexOf('\\'));
-    const envFlag = env ? ` --env ${env}` : '';
-    terminalRef.current?.executeCommand(`npx wrangler deploy --name ${worker.name}${envFlag}`, directory);
+    terminalRef.current?.executeCommand(buildDeployCommand(worker, env), resolveCwd(worker));
   };
 
   const handleLogs = (worker: Worker, env?: string, format: string = 'pretty') => {
-    const directory = worker.path.substring(0, worker.path.lastIndexOf('\\'));
     const envFlag = env ? ` --env ${env}` : '';
-    terminalRef.current?.executeCommand(`npx wrangler tail --config=${worker.path}${envFlag} --format ${format}`, directory);
+    terminalRef.current?.executeCommand(
+      `npx wrangler tail${envFlag} --format ${format}`,
+      resolveCwd(worker)
+    );
   };
 
   const handleShellChange = (shell: string) => {
@@ -169,6 +210,78 @@ function App() {
     }
   };
 
+  // Environments shared by ALL selected workers; "default" is always included.
+  const sharedEnvs = useMemo(() => {
+    const selected = workers.filter(w => selectedWorkers.has(w.path));
+    if (selected.length === 0) return ['default'];
+    const named = selected.map(w => new Set(w.environments));
+    const intersection = named.reduce((acc, set) => new Set([...acc].filter(e => set.has(e))));
+    return ['default', ...Array.from(intersection).sort()];
+  }, [workers, selectedWorkers]);
+
+  // Reset env selection if it's no longer in the shared list.
+  useEffect(() => {
+    if (!sharedEnvs.includes(multiDeployEnv)) setMultiDeployEnv('default');
+  }, [sharedEnvs, multiDeployEnv]);
+
+  const toggleWorkerSelection = useCallback((worker: Worker) => {
+    setSelectedWorkers(prev => {
+      const next = new Set(prev);
+      if (next.has(worker.path)) next.delete(worker.path);
+      else next.add(worker.path);
+      return next;
+    });
+  }, []);
+
+  const handleMultiDeploy = async () => {
+    const selected = workers.filter(w => selectedWorkers.has(w.path));
+    const commands = selected.map(w => {
+      const env = multiDeployEnv !== 'default' ? multiDeployEnv : undefined;
+      return { command: buildDeployCommand(w, env), cwd: resolveCwd(w), label: w.name };
+    });
+    setShowMultiDeployModal(false);
+    await terminalRef.current?.executeSequential(commands);
+  };
+
+  const fetchBranchInfo = useCallback(async (path: string) => {
+    try {
+      const headCmd = Command.create('git', ['-C', path, 'rev-parse', '--abbrev-ref', 'HEAD']);
+      const headOut = await headCmd.execute();
+      if (headOut.code === 0) {
+        setCurrentBranch(headOut.stdout.trim());
+      } else {
+        setCurrentBranch(null);
+        setBranches([]);
+        return;
+      }
+      const listCmd = Command.create('git', ['-C', path, 'branch']);
+      const listOut = await listCmd.execute();
+      if (listOut.code === 0) {
+        const parsed = listOut.stdout
+          .split('\n')
+          .map(b => b.replace(/^\*?\s+/, '').trim())
+          .filter(Boolean);
+        setBranches(parsed);
+      }
+    } catch {
+      setCurrentBranch(null);
+      setBranches([]);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (basePath) fetchBranchInfo(basePath);
+    else { setCurrentBranch(null); setBranches([]); }
+  }, [basePath, fetchBranchInfo]);
+
+  const handleBranchSwitch = async (branch: string) => {
+    if (!basePath || branch === currentBranch) return;
+    setBranchMenuOpen(false);
+    await terminalRef.current?.executeCommand(`git checkout ${branch}`, basePath);
+    fetchBranchInfo(basePath);
+    scanFolder(basePath);
+  };
+
   const filteredWorkers = workers.filter(w =>
     w.name.toLowerCase().includes(search.toLowerCase()) ||
     w.environments.some(env => env.toLowerCase().includes(search.toLowerCase()))
@@ -178,42 +291,83 @@ function App() {
     <div className="flex flex-col h-screen w-full bg-slate-950 p-4">
       {/* Header */}
       <header className="glass flex items-center justify-between px-8 py-3 z-10">
-        <div className="flex flex-col">
-          <h1 className="text-2xl font-black bg-gradient-to-r from-sky-400 to-indigo-400 bg-clip-text text-transparent leading-none">
-            WRANGLER MANAGER
-          </h1>
-          {/* Row 1: badges */}
-          <div className="flex items-center gap-2 mt-1">
-            {userEmail ? (
-              <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-green-500/10 border border-green-500/20 text-[10px] font-bold text-green-400">
-                <User size={10} /> {userEmail}
+        <div className="flex items-center gap-3">
+          <img
+            src={logo}
+            alt="Worker Manager logo"
+            className="w-20 h-20 rounded-3xl object-cover shrink-0 shadow-lg shadow-sky-500/10"
+          />
+          <div className="flex flex-col">
+            <h1 className="text-2xl font-black bg-gradient-to-r from-sky-400 to-indigo-400 bg-clip-text text-transparent leading-none">
+              WORKER MANAGER
+            </h1>
+            {/* Row 1: badges */}
+            <div className="flex items-center gap-2 mt-1">
+              {userEmail ? (
+                <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-green-500/10 border border-green-500/20 text-[10px] font-bold text-green-400">
+                  <User size={10} /> {userEmail}
+                </div>
+              ) : (
+                <button
+                  onClick={handleLogin}
+                  className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-red-500/10 border border-red-500/20 text-[10px] font-bold text-red-400 hover:bg-red-500/20 transition-colors"
+                >
+                  <UserX size={10} /> Disconnected
+                </button>
+              )}
+              {wranglerVersion && (
+                <span className="px-2 py-0.5 rounded-full bg-sky-500/10 border border-sky-500/20 text-[10px] font-bold text-sky-400">
+                  wrangler v{wranglerVersion}
+                </span>
+              )}
+              {debugStatus && (
+                <span className="text-[10px] text-yellow-400 font-mono max-w-[400px] truncate" title={debugStatus}>
+                  🐛 {debugStatus}
+                </span>
+              )}
+            </div>
+            {/* Row 2: current path + branch */}
+            {basePath && (
+              <div className="flex items-center gap-2 mt-1">
+                <p className="text-[10px] text-slate-600 font-mono truncate max-w-[240px]" title={basePath}>
+                  📁 {basePath}
+                </p>
+                {currentBranch && (
+                  <div className="relative">
+                    <button
+                      onClick={() => setBranchMenuOpen(o => !o)}
+                      className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-[10px] font-bold text-emerald-400 hover:bg-emerald-500/20 transition-colors"
+                    >
+                      <GitBranch size={9} />
+                      {currentBranch}
+                      {branches.length > 1 && <ChevronDown size={9} className={`transition-transform ${branchMenuOpen ? 'rotate-180' : ''}`} />}
+                    </button>
+                    {branchMenuOpen && branches.length > 1 && (
+                      <>
+                        <div className="fixed inset-0 z-20" onClick={() => setBranchMenuOpen(false)} />
+                        <div className="absolute left-0 top-full mt-1 bg-slate-900 border border-slate-700 rounded-lg shadow-xl z-30 min-w-[160px] py-1 overflow-hidden">
+                          {branches.map(branch => (
+                            <button
+                              key={branch}
+                              onClick={() => handleBranchSwitch(branch)}
+                              className={`w-full text-left px-3 py-1.5 text-[11px] font-bold transition-colors flex items-center gap-1.5 ${branch === currentBranch
+                                ? 'bg-emerald-500/20 text-emerald-300'
+                                : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200'
+                                }`}
+                            >
+                              {branch === currentBranch && <span className="text-emerald-400">✓</span>}
+                              {branch}
+                            </button>
+                          ))}
+                        </div>
+                      </>
+                    )}
+                  </div>
+                )}
               </div>
-            ) : (
-              <button
-                onClick={handleLogin}
-                className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-red-500/10 border border-red-500/20 text-[10px] font-bold text-red-400 hover:bg-red-500/20 transition-colors"
-              >
-                <UserX size={10} /> Disconnected
-              </button>
             )}
-            {wranglerVersion && (
-              <span className="px-2 py-0.5 rounded-full bg-sky-500/10 border border-sky-500/20 text-[10px] font-bold text-sky-400">
-                wrangler v{wranglerVersion}
-              </span>
-            )}
-            {debugStatus && (
-              <span className="text-[10px] text-yellow-400 font-mono max-w-[400px] truncate" title={debugStatus}>
-                🐛 {debugStatus}
-              </span>
-            )}
-          </div>
-          {/* Row 2: current path */}
-          {basePath && (
-            <p className="text-[10px] text-slate-600 font-mono mt-1 truncate max-w-[340px]" title={basePath}>
-              📁 {basePath}
-            </p>
-          )}
-        </div>
+          </div>{/* end flex-col */}
+        </div>{/* end flex items-center gap-3 */}
 
         {/* Search */}
         <div className="flex-1 max-w-md mx-8 relative group">
@@ -229,6 +383,13 @@ function App() {
 
         {/* Actions */}
         <div className="flex items-center gap-3">
+          <button
+            onClick={() => setShowDeploySettings(true)}
+            className="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-sky-400 transition-colors"
+            title="Configurar comando de deploy"
+          >
+            <Settings size={18} />
+          </button>
           {basePath && (
             <button
               onClick={() => scanFolder(basePath)}
@@ -243,10 +404,49 @@ function App() {
             className="flex items-center gap-2 bg-sky-500 hover:bg-sky-400 text-slate-950 px-4 py-2 rounded-lg font-bold text-sm transition-all shadow-lg shadow-sky-500/20"
           >
             <FolderOpen size={18} />
-            Open Folder
+            Abrir directorio
           </button>
         </div>
       </header>
+
+      {/* Multi-deploy bar */}
+      {selectedWorkers.size > 0 && (
+        <div className="flex items-center gap-4 px-6 py-2.5 bg-indigo-500/10 border-b border-indigo-500/20 shrink-0">
+          <span className="text-xs font-bold text-indigo-300">
+            {selectedWorkers.size} worker{selectedWorkers.size > 1 ? 's' : ''} seleccionado{selectedWorkers.size > 1 ? 's' : ''}
+          </span>
+
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] text-indigo-400/60">Entorno:</span>
+            <select
+              value={multiDeployEnv}
+              onChange={e => setMultiDeployEnv(e.target.value)}
+              className="bg-slate-900 border border-indigo-500/30 text-indigo-300 text-[10px] font-bold rounded px-2 py-1 outline-none hover:border-indigo-400 transition-colors cursor-pointer"
+            >
+              {sharedEnvs.map(env => (
+                <option key={env} value={env}>{env}</option>
+              ))}
+            </select>
+          </div>
+
+          <div className="flex-1" />
+
+          <button
+            onClick={() => setSelectedWorkers(new Set())}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-bold text-slate-400 hover:text-slate-200 hover:bg-slate-800 border border-slate-700 transition-all"
+          >
+            <X size={11} />
+            Deseleccionar todo
+          </button>
+          <button
+            onClick={() => setShowMultiDeployModal(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-500 hover:bg-indigo-400 text-white text-[11px] font-bold transition-all shadow-lg shadow-indigo-500/20"
+          >
+            <Rocket size={12} />
+            Deploy {selectedWorkers.size} workers
+          </button>
+        </div>
+      )}
 
       {/* Main Grid */}
       <main className="flex-1 overflow-y-auto p-6">
@@ -256,6 +456,8 @@ function App() {
             onDeploy={handleDeploy}
             onLogs={handleLogs}
             onOpen={handleOpenEditor}
+            selectedWorkers={selectedWorkers}
+            onSelectToggle={toggleWorkerSelection}
           />
         ) : (
           <div className="col-span-full flex flex-col items-center justify-center py-20 text-slate-600">
@@ -298,6 +500,32 @@ function App() {
           height={terminalHeight}
         />
       </div>
+
+      {/* Multi-deploy confirmation modal */}
+      {showMultiDeployModal && (
+        <MultiDeployModal
+          workers={workers.filter(w => selectedWorkers.has(w.path))}
+          selectedEnv={multiDeployEnv}
+          onConfirm={handleMultiDeploy}
+          onCancel={() => setShowMultiDeployModal(false)}
+        />
+      )}
+
+      {/* Deploy command settings modal */}
+      {showDeploySettings && (
+        <DeploySettingsModal
+          template={deployTemplate}
+          deployDir={deployDir}
+          onSave={(t, d) => {
+            setDeployTemplate(t);
+            setDeployDir(d);
+            localStorage.setItem('deploy_template', t);
+            localStorage.setItem('deploy_dir', d);
+            setShowDeploySettings(false);
+          }}
+          onCancel={() => setShowDeploySettings(false)}
+        />
+      )}
     </div>
   );
 }

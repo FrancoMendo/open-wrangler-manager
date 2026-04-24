@@ -1,8 +1,8 @@
-# Wrangler Manager
+# Open Worker Manager
 
 **Interfaz de escritorio para gestionar proyectos de Cloudflare Workers desde un solo lugar.**
 
-Wrangler Manager escanea recursivamente un directorio local en busca de archivos `wrangler.toml` y `wrangler.jsonc`, y presenta cada Worker como una tarjeta interactiva desde donde podés deployar, ver logs en tiempo real y ejecutar comandos, todo sin salir de la aplicación.
+Open Worker Manager escanea recursivamente un directorio local en busca de archivos `wrangler.toml` y `wrangler.jsonc`, y presenta cada Worker como una tarjeta interactiva desde donde podés deployar, ver logs en tiempo real y ejecutar comandos, todo sin salir de la aplicación.
 
 > **100 % local · Sin servidores · Sin telemetría · Código abierto**
 
@@ -50,7 +50,7 @@ Cada Worker detectado muestra su nombre, ruta relativa y la lista de entornos de
 
 ## Seguridad
 
-Wrangler Manager está diseñado para correr **exclusivamente en tu máquina**. No hay ningún componente remoto involucrado:
+Open Worker Manager está diseñado para correr **exclusivamente en tu máquina**. No hay ningún componente remoto involucrado:
 
 | Aspecto | Detalle |
 |---|---|
