@@ -95,30 +95,7 @@ const WorkerCard = ({ worker, onDeploy, onLogs, onOpen: _onOpen, isSelected = fa
 
         {/* Actions */}
         <div className="flex items-center gap-1.5 shrink-0">
-          {/* Log format toggle */}
-          <div className="flex rounded border border-slate-700 overflow-hidden text-[10px] font-bold">
-            <button
-              onClick={() => setLogFormat('pretty')}
-              className={`px-2 py-1.5 transition-colors ${logFormat === 'pretty'
-                  ? 'bg-indigo-500/20 text-indigo-300'
-                  : 'text-slate-500 hover:text-slate-300 bg-slate-800/40'
-                }`}
-              title="Pretty format"
-            >
-              pretty
-            </button>
-            <button
-              onClick={() => setLogFormat('json')}
-              className={`px-2 py-1.5 transition-colors border-l border-slate-700 ${logFormat === 'json'
-                  ? 'bg-indigo-500/20 text-indigo-300'
-                  : 'text-slate-500 hover:text-slate-300 bg-slate-800/40'
-                }`}
-              title="JSON format"
-            >
-              json
-            </button>
-          </div>
-
+          {/* Deploy button */}
           <button
             onClick={() => onDeploy(worker, selectedEnv ?? undefined)}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded bg-sky-500/10 hover:bg-sky-500 text-sky-400 hover:text-slate-950 border border-sky-500/20 text-[11px] font-bold transition-all"
@@ -127,14 +104,49 @@ const WorkerCard = ({ worker, onDeploy, onLogs, onOpen: _onOpen, isSelected = fa
             <Rocket size={12} />
             Deploy
           </button>
-          <button
-            onClick={() => onLogs(worker, selectedEnv ?? undefined, logFormat)}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-slate-200 border border-slate-700 text-[11px] font-bold transition-all"
-            title={`Tail logs (--format ${logFormat}${selectedEnv ? `, --env ${selectedEnv}` : ''})`}
+
+          {/* Logs split-button: format config (tenue) + Tail action (prominente) */}
+          <div
+            className="flex items-stretch rounded border border-slate-700 overflow-hidden text-[11px] font-bold"
+            title={`Tail logs — formato ${logFormat}${selectedEnv ? `, --env ${selectedEnv}` : ''}`}
           >
-            <Activity size={12} />
-            Logs
-          </button>
+            {/* Format segment — config, no es la acción */}
+            <div className="flex items-center bg-slate-900/60 px-1 gap-0.5">
+              <button
+                onClick={() => setLogFormat('pretty')}
+                className={`px-1.5 py-1 rounded text-[9px] font-bold tracking-wide transition-colors ${
+                  logFormat === 'pretty'
+                    ? 'text-indigo-400 bg-indigo-500/15'
+                    : 'text-slate-600 hover:text-slate-500'
+                }`}
+                title="Formato pretty"
+              >
+                pretty
+              </button>
+              <span className="text-slate-700 text-[9px] select-none">·</span>
+              <button
+                onClick={() => setLogFormat('json')}
+                className={`px-1.5 py-1 rounded text-[9px] font-bold tracking-wide transition-colors ${
+                  logFormat === 'json'
+                    ? 'text-indigo-400 bg-indigo-500/15'
+                    : 'text-slate-600 hover:text-slate-500'
+                }`}
+                title="Formato JSON"
+              >
+                json
+              </button>
+            </div>
+
+            {/* Tail trigger — este es el botón real */}
+            <button
+              onClick={() => onLogs(worker, selectedEnv ?? undefined, logFormat)}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border-l border-slate-700 transition-colors"
+            >
+              <Activity size={12} />
+              Tail
+            </button>
+          </div>
+
         </div>
       </div>
 

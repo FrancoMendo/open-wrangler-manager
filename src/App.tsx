@@ -3,12 +3,13 @@ import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
 import { Command } from '@tauri-apps/plugin-shell';
 import { FolderOpen, RefreshCw, Terminal as TerminalIcon, User, UserX, Search, Rocket, X, GitBranch, ChevronDown, Settings } from 'lucide-react';
+import logo from './assets/logo.png';
 import { Worker } from './components/WorkerCard';
 import FolderGroup from './components/FolderGroup';
 import Terminal, { TerminalHandle } from './components/Terminal';
 import MultiDeployModal, { WorkerDeployConfig } from './components/MultiDeployModal';
 import DeploySettingsModal, { DEFAULT_DEPLOY_TEMPLATE } from './components/DeploySettingsModal';
-import logo from './assets/logo.png';
+
 
 function App() {
   const [workers, setWorkers] = useState<Worker[]>([]);
@@ -126,7 +127,7 @@ function App() {
 
     const interval = setInterval(() => {
       checkLoginStatus();
-    }, 10000);
+    }, 15000);
 
     return () => clearInterval(interval);
   }, [userEmail]);
