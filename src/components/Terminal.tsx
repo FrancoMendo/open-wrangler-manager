@@ -4,11 +4,11 @@ import { FitAddon } from '@xterm/addon-fit';
 import { SearchAddon } from '@xterm/addon-search';
 import '@xterm/xterm/css/xterm.css';
 import { Command } from '@tauri-apps/plugin-shell';
-import { Trash2, Search, ChevronUp, ChevronDown, X, FolderSearch } from 'lucide-react';
+import { Trash2, Search, ChevronUp, ChevronDown, X, FolderSearch, ChevronsDown } from 'lucide-react';
 
 export interface TerminalHandle {
   executeCommand: (commandStr: string, cwd?: string) => Promise<void>;
-  executeSequential: (commands: { command: string; cwd?: string; label?: string }[]) => Promise<void>;
+  executeSequential: (commands: { command: string; cwd?: string; label?: string }[], onProgress?: (done: number, total: number) => void) => Promise<void>;
   write: (text: string) => void;
   kill: () => Promise<void>;
 }
@@ -34,6 +34,10 @@ const Terminal = forwardRef<TerminalHandle, TerminalProps>(({ selectedShell, onS
 
   const handleClear = useCallback(() => {
     xtermRef.current?.clear();
+  }, []);
+
+  const handleScrollToBottom = useCallback(() => {
+    xtermRef.current?.scrollToBottom();
   }, []);
 
   const handleSearch = useCallback((query: string, direction: 'next' | 'prev' = 'next') => {
@@ -162,14 +166,16 @@ const Terminal = forwardRef<TerminalHandle, TerminalProps>(({ selectedShell, onS
         await runCommandInternal(commandStr, cwd);
       },
 
-      executeSequential: async (commands: { command: string; cwd?: string; label?: string }[]) => {
-        for (const { command, cwd, label } of commands) {
+      executeSequential: async (commands: { command: string; cwd?: string; label?: string }[], onProgress?: (done: number, total: number) => void) => {
+        for (let i = 0; i < commands.length; i++) {
+          const { command, cwd, label } = commands[i];
           if (!xtermRef.current) return;
           if (label) {
             xtermRef.current.writeln(`\r\n\x1b[35m▶ ${label}\x1b[0m`);
           }
           xtermRef.current.writeln(`\r\n\x1b[36m$ ${command}\x1b[0m`);
           await runCommandInternal(command, cwd);
+          onProgress?.(i + 1, commands.length);
         }
         xtermRef.current?.writeln('\r\n\x1b[32m✓ Multi-deploy finalizado.\x1b[0m');
       },
@@ -282,6 +288,16 @@ const Terminal = forwardRef<TerminalHandle, TerminalProps>(({ selectedShell, onS
           >
             <FolderSearch size={11} />
             pwd
+          </button>
+
+          {/* Scroll to bottom */}
+          <button
+            onClick={handleScrollToBottom}
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded text-[10px] font-bold text-slate-500 hover:text-sky-400 hover:bg-sky-500/10 border border-transparent transition-all"
+            title="Scroll to bottom"
+          >
+            <ChevronsDown size={11} />
+            Bottom
           </button>
 
           {/* Clear */}

@@ -6,7 +6,7 @@ import { FolderOpen, RefreshCw, Terminal as TerminalIcon, User, UserX, Search, R
 import { Worker } from './components/WorkerCard';
 import FolderGroup from './components/FolderGroup';
 import Terminal, { TerminalHandle } from './components/Terminal';
-import MultiDeployModal from './components/MultiDeployModal';
+import MultiDeployModal, { WorkerDeployConfig } from './components/MultiDeployModal';
 import DeploySettingsModal, { DEFAULT_DEPLOY_TEMPLATE } from './components/DeploySettingsModal';
 import logo from './assets/logo.png';
 
@@ -35,6 +35,7 @@ function App() {
   });
   const [deployDir, setDeployDir] = useState(localStorage.getItem('deploy_dir') ?? '');
   const [showDeploySettings, setShowDeploySettings] = useState(false);
+  const [deployProgress, setDeployProgress] = useState<{ current: number; total: number } | null>(null);
   const isDragging = useRef(false);
   const dragStartY = useRef(0);
   const dragStartHeight = useRef(0);
@@ -158,7 +159,17 @@ function App() {
     }
   };
 
-  const buildDeployCommand = (worker: Worker, env?: string): string => {
+  /**
+   * Builds the deploy command for a worker.
+   * When `indexPath` is provided, uses the explicit pattern:
+   *   npx wrangler deploy --minify <index> [--env <env>] --config=<config>
+   * Otherwise falls back to the user-configured template.
+   */
+  const buildDeployCommand = (worker: Worker, env?: string, indexPath?: string): string => {
+    if (indexPath) {
+      const envFlag = env ? ` --env ${env}` : '';
+      return `npx wrangler deploy --minify ${indexPath}${envFlag} --config=${worker.path}`;
+    }
     const envPart = env ? `--env ${env}` : '';
     return deployTemplate
       .replace('{config}', worker.path)
@@ -233,14 +244,19 @@ function App() {
     });
   }, []);
 
-  const handleMultiDeploy = async () => {
-    const selected = workers.filter(w => selectedWorkers.has(w.path));
-    const commands = selected.map(w => {
-      const env = multiDeployEnv !== 'default' ? multiDeployEnv : undefined;
-      return { command: buildDeployCommand(w, env), cwd: resolveCwd(w), label: w.name };
-    });
+  const handleMultiDeploy = async (configs: WorkerDeployConfig[]) => {
+    const env = multiDeployEnv !== 'default' ? multiDeployEnv : undefined;
+    const commands = configs.map(({ worker, indexPath }) => ({
+      command: buildDeployCommand(worker, env, indexPath || undefined),
+      cwd: resolveCwd(worker),
+      label: worker.name,
+    }));
     setShowMultiDeployModal(false);
-    await terminalRef.current?.executeSequential(commands);
+    setDeployProgress({ current: 0, total: commands.length });
+    await terminalRef.current?.executeSequential(commands, (done, total) => {
+      setDeployProgress({ current: done, total });
+    });
+    setDeployProgress(null);
   };
 
   const fetchBranchInfo = useCallback(async (path: string) => {
@@ -480,6 +496,27 @@ function App() {
       >
         <div className="w-12 h-0.5 rounded-full bg-slate-700 group-hover:bg-sky-500 transition-colors" />
       </div>
+
+      {/* Multi-deploy progress bar */}
+      {deployProgress && (
+        <div className="shrink-0 px-4 py-2 bg-slate-900/80 border-b border-slate-800">
+          <div className="flex items-center justify-between mb-1.5">
+            <span className="text-[10px] font-bold text-indigo-300 flex items-center gap-1.5">
+              <Rocket size={10} />
+              Deploying {deployProgress.current} / {deployProgress.total} workers
+            </span>
+            <span className="text-[10px] font-bold text-indigo-400">
+              {Math.round((deployProgress.current / deployProgress.total) * 100)}%
+            </span>
+          </div>
+          <div className="h-1.5 bg-slate-800 rounded-full overflow-hidden">
+            <div
+              className="h-full bg-gradient-to-r from-indigo-500 to-sky-400 rounded-full transition-all duration-500"
+              style={{ width: `${(deployProgress.current / deployProgress.total) * 100}%` }}
+            />
+          </div>
+        </div>
+      )}
 
       {/* Terminal Area */}
       <div className="relative w-full shrink-0" style={{ height: terminalHeight }}>
