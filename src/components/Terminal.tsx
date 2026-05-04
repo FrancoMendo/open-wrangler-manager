@@ -31,6 +31,8 @@ const Terminal = forwardRef<TerminalHandle, TerminalProps>(({ selectedShell, onS
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResultCount, setSearchResultCount] = useState<number | null>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const searchOpenRef = useRef(false);
+  const searchQueryRef = useRef('');
 
   const handleClear = useCallback(() => {
     xtermRef.current?.clear();
@@ -70,10 +72,14 @@ const Terminal = forwardRef<TerminalHandle, TerminalProps>(({ selectedShell, onS
       } else {
         setSearchQuery('');
         setSearchResultCount(null);
+        searchAddonRef.current?.clearDecorations();
       }
       return !prev;
     });
   }, []);
+
+  useEffect(() => { searchOpenRef.current = searchOpen; }, [searchOpen]);
+  useEffect(() => { searchQueryRef.current = searchQuery; }, [searchQuery]);
 
   // Keyboard shortcut: Ctrl+F to open search
   useEffect(() => {
@@ -128,16 +134,22 @@ const Terminal = forwardRef<TerminalHandle, TerminalProps>(({ selectedShell, onS
         resolve();
       });
 
+      const writeAndLock = (text: string) => {
+        if (searchOpenRef.current && searchQueryRef.current) {
+          const vp = term.buffer.active.viewportY;
+          term.writeln(text);
+          if (term.buffer.active.viewportY !== vp) term.scrollToLine(vp);
+        } else {
+          term.writeln(text);
+        }
+      };
+
       command.stdout.on('data', (line: string) => {
-        term.writeln(line);
+        writeAndLock(line);
       });
 
       command.stderr.on('data', (line: string) => {
-        if (isWrangler) {
-          term.writeln(line);
-        } else {
-          term.writeln(`\x1b[31m${line}\x1b[0m`);
-        }
+        writeAndLock(isWrangler ? line : `\x1b[31m${line}\x1b[0m`);
       });
 
       command.spawn()
@@ -210,6 +222,7 @@ const Terminal = forwardRef<TerminalHandle, TerminalProps>(({ selectedShell, onS
     if (!terminalRef.current) return;
 
     const term = new XTerm({
+      allowProposedApi: true,
       theme: {
         background: '#020617',
         foreground: '#e2e8f0',
@@ -220,6 +233,8 @@ const Terminal = forwardRef<TerminalHandle, TerminalProps>(({ selectedShell, onS
       fontSize: 12,
       cursorBlink: true,
       rows: 10,
+      scrollback: 5000,
+      overviewRuler: { width: 15 },
     });
 
     const fitAddon = new FitAddon();
@@ -238,10 +253,15 @@ const Terminal = forwardRef<TerminalHandle, TerminalProps>(({ selectedShell, onS
     fitAddonRef.current = fitAddon;
     searchAddonRef.current = searchAddon;
 
+    const resultsDisposable = searchAddon.onDidChangeResults(({ resultCount }) => {
+      setSearchResultCount(resultCount === -1 ? null : resultCount);
+    });
+
     const handleResize = () => fitAddon.fit();
     window.addEventListener('resize', handleResize);
 
     return () => {
+      resultsDisposable.dispose();
       window.removeEventListener('resize', handleResize);
       term.dispose();
     };

@@ -14,7 +14,8 @@
       {
         "title": "Workers Manager",
         "width": 1400,
-        "height": 1000
+        "height": 1000,
+        "theme": "Dark"
       }
     ],
     "security": {

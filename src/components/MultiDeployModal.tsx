@@ -160,7 +160,7 @@ const MultiDeployModal = ({ workers, selectedEnv, onConfirm, onCancel }: MultiDe
       <div className="flex items-center gap-2.5">
         <Rocket size={16} className="text-indigo-400" />
         <div>
-          <h2 className="text-sm font-bold text-slate-100">Confirmar deploy múltiple</h2>
+          <h2 className="text-sm font-bold text-slate-100">{isMulti ? 'Confirmar deploy múltiple' : 'Confirmar deploy'}</h2>
           {subtitle && <p className="text-[10px] text-slate-500 mt-0.5">{subtitle}</p>}
         </div>
       </div>

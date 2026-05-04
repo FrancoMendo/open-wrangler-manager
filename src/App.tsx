@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
 import { Command } from '@tauri-apps/plugin-shell';
-import { FolderOpen, RefreshCw, Terminal as TerminalIcon, User, UserX, Search, Rocket, X, GitBranch, ChevronDown, Settings, AlertCircle } from 'lucide-react';
+import { FolderOpen, RefreshCw, Terminal as TerminalIcon, User, UserX, Search, Rocket, X, GitBranch, ChevronDown, Settings, AlertCircle, Maximize2, Minimize2, RotateCcw } from 'lucide-react';
 import logo from './assets/logo.png';
 import { Worker } from './components/WorkerCard';
 import FolderGroup from './components/FolderGroup';
@@ -21,10 +21,13 @@ function App() {
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [wranglerVersion, setWranglerVersion] = useState<string | null>(null);
   const [processRunning, setProcessRunning] = useState(false);
-  const [terminalHeight, setTerminalHeight] = useState(280);
+  const TERMINAL_DEFAULT_HEIGHT = 280;
+  const [terminalHeight, setTerminalHeight] = useState(TERMINAL_DEFAULT_HEIGHT);
+  const [terminalMaximized, setTerminalMaximized] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
   const [selectedWorkers, setSelectedWorkers] = useState<Set<string>>(new Set());
   const [multiDeployEnv, setMultiDeployEnv] = useState('default');
-  const [showMultiDeployModal, setShowMultiDeployModal] = useState(false);
+  const [deployTarget, setDeployTarget] = useState<{ workers: Worker[], env: string } | null>(null);
   const [currentBranch, setCurrentBranch] = useState<string | null>(null);
   const [branches, setBranches] = useState<string[]>([]);
   const [branchMenuOpen, setBranchMenuOpen] = useState(false);
@@ -59,8 +62,12 @@ function App() {
     const onMouseMove = (e: MouseEvent) => {
       if (!isDragging.current) return;
       const delta = dragStartY.current - e.clientY; // drag up = bigger terminal
-      const newHeight = Math.min(600, Math.max(120, dragStartHeight.current + delta));
+      const containerHeight = containerRef.current?.clientHeight ?? window.innerHeight;
+      // Allow dragging up to 95% of the container to cover the workers list
+      const maxAllowed = Math.floor(containerHeight * 0.95);
+      const newHeight = Math.min(maxAllowed, Math.max(120, dragStartHeight.current + delta));
       setTerminalHeight(newHeight);
+      setTerminalMaximized(false);
     };
     const onMouseUp = () => {
       isDragging.current = false;
@@ -222,7 +229,7 @@ function App() {
   };
 
   const handleDeploy = (worker: Worker, env?: string) => {
-    terminalRef.current?.executeCommand(buildDeployCommand(worker, env), resolveCwd(worker));
+    setDeployTarget({ workers: [worker], env: env || 'default' });
   };
 
   const handleLogs = (worker: Worker, env?: string, format: string = 'pretty') => {
@@ -273,14 +280,14 @@ function App() {
     });
   }, []);
 
-  const handleMultiDeploy = async (configs: WorkerDeployConfig[]) => {
-    const env = multiDeployEnv !== 'default' ? multiDeployEnv : undefined;
+  const handleConfirmDeploy = async (configs: WorkerDeployConfig[]) => {
+    const env = deployTarget?.env !== 'default' ? deployTarget?.env : undefined;
     const commands = configs.map(({ worker, indexPath }) => ({
       command: buildDeployCommand(worker, env, indexPath || undefined),
       cwd: resolveCwd(worker),
       label: worker.name,
     }));
-    setShowMultiDeployModal(false);
+    setDeployTarget(null);
     setDeployProgress({ current: 0, total: commands.length });
     await terminalRef.current?.executeSequential(commands, (done, total) => {
       setDeployProgress({ current: done, total });
@@ -333,21 +340,21 @@ function App() {
   );
 
   return (
-    <div className="flex flex-col h-screen w-full bg-slate-950 p-4">
+    <div ref={containerRef} className="flex flex-col h-screen w-full bg-slate-950 p-4">
       {/* Header */}
       <header className="glass flex items-center justify-between px-8 py-3 z-10">
         <div className="flex items-center gap-3">
-          <img
+          {/* <img
             src={logo}
             alt="Worker Manager logo"
             className="w-24 h-24 rounded-full object-cover shrink-0 shadow-lg shadow-sky-500/10"
-          />
+          /> */}
           <div className="flex flex-col">
             <h1 className="text-2xl font-black bg-gradient-to-r from-sky-400 to-indigo-400 bg-clip-text text-transparent leading-none">
               Open Worker Manager
             </h1>
             {/* Row 1: badges */}
-            <div className="flex items-center gap-2 mt-1">
+            <div className="flex items-center gap-2 mt-2">
               {userEmail ? (
                 <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-green-500/10 border border-green-500/20 text-[10px] font-bold text-green-400">
                   <User size={10} /> {userEmail}
@@ -492,7 +499,10 @@ function App() {
             Deseleccionar todo
           </button>
           <button
-            onClick={() => setShowMultiDeployModal(true)}
+            onClick={() => setDeployTarget({
+              workers: workers.filter(w => selectedWorkers.has(w.path)),
+              env: multiDeployEnv
+            })}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-500 hover:bg-indigo-400 text-white text-[11px] font-bold transition-all shadow-lg shadow-indigo-500/20"
           >
             <Rocket size={12} />
@@ -525,13 +535,45 @@ function App() {
         )}
       </main>
 
-      {/* Drag handle */}
+      {/* Drag handle + terminal controls */}
       <div
-        onMouseDown={onDragStart}
-        className="group relative h-2 w-full cursor-ns-resize bg-transparent hover:bg-sky-500/10 transition-colors flex items-center justify-center shrink-0"
-        title="Drag to resize terminal"
+        className="group relative h-6 w-full bg-transparent hover:bg-sky-500/5 transition-colors flex items-center justify-center shrink-0 gap-3"
       >
-        <div className="w-12 h-0.5 rounded-full bg-slate-700 group-hover:bg-sky-500 transition-colors" />
+        {/* Draggable pill — only this part triggers resize */}
+        <div
+          onMouseDown={onDragStart}
+          className="flex-1 h-full cursor-ns-resize flex items-center justify-center"
+          title="Arrastrar para redimensionar la terminal"
+        >
+          <div className="w-12 h-0.5 rounded-full bg-slate-700 group-hover:bg-sky-500 transition-colors" />
+        </div>
+
+        {/* Reset to default size */}
+        <button
+          onClick={() => { setTerminalHeight(TERMINAL_DEFAULT_HEIGHT); setTerminalMaximized(false); }}
+          className="absolute right-10 flex items-center justify-center w-5 h-5 rounded hover:bg-slate-700 text-slate-600 hover:text-slate-300 transition-colors"
+          title="Restablecer tamaño inicial de la terminal"
+        >
+          <RotateCcw size={11} />
+        </button>
+
+        {/* Maximize / Restore */}
+        <button
+          onClick={() => {
+            if (terminalMaximized) {
+              setTerminalMaximized(false);
+              setTerminalHeight(TERMINAL_DEFAULT_HEIGHT);
+            } else {
+              const containerHeight = containerRef.current?.clientHeight ?? window.innerHeight;
+              setTerminalHeight(Math.floor(containerHeight * 0.95));
+              setTerminalMaximized(true);
+            }
+          }}
+          className="absolute right-3 flex items-center justify-center w-5 h-5 rounded hover:bg-slate-700 text-slate-600 hover:text-slate-300 transition-colors"
+          title={terminalMaximized ? 'Restaurar tamaño de la terminal' : 'Maximizar terminal (cubrir lista de workers)'}
+        >
+          {terminalMaximized ? <Minimize2 size={11} /> : <Maximize2 size={11} />}
+        </button>
       </div>
 
       {/* Multi-deploy progress bar */}
@@ -575,13 +617,13 @@ function App() {
         />
       </div>
 
-      {/* Multi-deploy confirmation modal */}
-      {showMultiDeployModal && (
+      {/* Deployment confirmation modal */}
+      {deployTarget && (
         <MultiDeployModal
-          workers={workers.filter(w => selectedWorkers.has(w.path))}
-          selectedEnv={multiDeployEnv}
-          onConfirm={handleMultiDeploy}
-          onCancel={() => setShowMultiDeployModal(false)}
+          workers={deployTarget.workers}
+          selectedEnv={deployTarget.env}
+          onConfirm={handleConfirmDeploy}
+          onCancel={() => setDeployTarget(null)}
         />
       )}
 
